@@ -88,6 +88,7 @@
             try {
                 const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
                 const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
                 const margin = 15;
                 let yPos = 20;
 
@@ -97,7 +98,7 @@
                     const splitText = pdf.splitTextToSize(text, pageWidth - margin * 2);
                     
                     const textHeight = splitText.length * (size / 2.5);
-                    if (y + textHeight > pdf.internal.pageSize.getHeight() - margin) {
+                    if (y + textHeight > pageHeight - margin) {
                         pdf.addPage();
                         y = 20;
                     }
@@ -129,20 +130,21 @@
                         yPos = addText(item.description, 12, yPos, true);
                     }
 
-                    const img = new Image();
-                    img.src = item.src;
-                    await new Promise(resolve => img.onload = resolve);
+                    // Carregar a imagem para obter as dimensões
+                    const imgResponse = await fetch(item.src);
+                    const blob = await imgResponse.blob();
+                    const imgBitmap = await createImageBitmap(blob);
 
-                    const ratio = img.width / img.height;
+                    const ratio = imgBitmap.width / imgBitmap.height;
                     const pdfImgWidth = pageWidth - margin * 2;
                     const pdfImgHeight = pdfImgWidth / ratio;
 
-                    if (yPos + pdfImgHeight > pdf.internal.pageSize.getHeight() - margin) {
+                    if (yPos + pdfImgHeight > pageHeight - margin) {
                         pdf.addPage();
                         yPos = 20;
                     }
 
-                    pdf.addImage(img.src, 'JPEG', margin, yPos, pdfImgWidth, pdfImgHeight);
+                    pdf.addImage(item.src, 'JPEG', margin, yPos, pdfImgWidth, pdfImgHeight);
                     yPos += pdfImgHeight + 10;
                 }
 
@@ -157,9 +159,9 @@
 
     <script>
     /**
-     * @file Gerador Rápido de PDF - Versão Refatorada
+     * @file Gerador Rápido de PDF - Versão Final
      * @author HAlexandre
-     * @version 2.0.0
+     * @version 2.1.0
      */
     
     // --- Módulo de UI ---
@@ -177,6 +179,11 @@
             descriptionInput: document.getElementById('descricao'),
         },
 
+        /**
+         * Exibe uma notificação na tela.
+         * @param {string} message - A mensagem a ser exibida.
+         * @param {'success'|'error'} type - O tipo de notificação.
+         */
         showNotification(message, type = 'success') {
             const color = type === 'success' ? 'bg-green-600' : 'bg-red-600';
             const notification = document.createElement('div');
@@ -190,6 +197,10 @@
             }, 3000);
         },
 
+        /**
+         * Cria e adiciona um item de imagem à lista de visualização.
+         * @param {string} src - O Data URL da imagem.
+         */
         createImageItem(src) {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'image-item bg-white dark:bg-slate-900/50 p-3 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col gap-2';
@@ -207,12 +218,18 @@
             itemDiv.querySelector('.remove-btn').addEventListener('click', () => itemDiv.remove());
         },
 
+        /**
+         * Define o estado de carregamento da UI.
+         * @param {boolean} isLoading - Se está carregando.
+         * @param {string} [message=''] - A mensagem de carregamento.
+         */
         setLoading(isLoading, message = '') {
             this.dom.generateBtn.disabled = isLoading;
             this.dom.loadingMessage.textContent = message;
             this.dom.loadingMessage.style.display = isLoading ? 'block' : 'none';
         },
 
+        /** Carrega o tema salvo do localStorage. */
         loadTheme() {
             const savedTheme = localStorage.getItem('theme');
             if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -223,6 +240,7 @@
             }
         },
 
+        /** Define a assinatura dinâmica no rodapé. */
         setSignature() {
             this.dom.signature.innerHTML = `<p>Feito por HAlexandre © ${new Date().getFullYear()}</p>`;
         }
@@ -232,6 +250,7 @@
     const App = {
         pdfWorker: null,
 
+        /** Inicializa a aplicação. */
         init() {
             this.setupWorker();
             this.setupEventListeners();
@@ -240,6 +259,7 @@
             UI.setSignature();
         },
 
+        /** Configura o Web Worker para geração de PDF. */
         setupWorker() {
             try {
                 const workerBlob = new Blob([document.getElementById('pdfWorker').textContent], { type: 'application/javascript' });
@@ -247,10 +267,11 @@
                 this.pdfWorker.onmessage = (e) => {
                     const { type, pdfBlob, message } = e.data;
                     if (type === 'success') {
+                        const title = (UI.dom.titleInput.value || 'documento').replace(/[^a-z0-9]/gi, '_').toLowerCase();
                         const url = URL.createObjectURL(pdfBlob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `${(UI.dom.titleInput.value || 'documento').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+                        a.download = `${title}.pdf`;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
@@ -272,6 +293,10 @@
             }
         },
 
+        /**
+         * Manipula os ficheiros de imagem recebidos.
+         * @param {FileList} files - A lista de ficheiros.
+         */
         handleFiles(files) {
             for (const file of files) {
                 if (file.type.startsWith('image/')) {
@@ -282,6 +307,7 @@
             }
         },
 
+        /** Configura todos os event listeners da aplicação. */
         setupEventListeners() {
             const { dom } = UI;
             dom.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dom.dropZone.classList.add('border-indigo-500'); });
